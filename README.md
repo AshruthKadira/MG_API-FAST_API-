@@ -342,3 +342,43 @@ This project demonstrates:
 
 AI / ML Engineer  
 Python • Data Engineering • OCR Systems • Automation • Backend Systems
+
+---
+
+# Deploy to Azure App Service
+
+The repository includes a GitHub Actions workflow that deploys the `main` branch to an existing Azure App Service on every push. It also supports manual runs from the GitHub Actions tab.
+
+## Create the Azure web app
+
+Create an **App Service** using **Linux** and a supported Python runtime (Python 3.12 is a suitable choice). In the app's **Configuration → General settings**, set the startup command to:
+
+```text
+gunicorn --bind=0.0.0.0:8000 --workers=2 --worker-class=uvicorn.workers.UvicornWorker azure_app:app
+```
+
+In **Configuration → Application settings**, add these settings. The names must match exactly because the application reads them as environment variables:
+
+| Setting | Value |
+| --- | --- |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` |
+| `api_key` | A long, random API key for calling this API |
+| `azure_endpoint` | Azure Vision endpoint URL |
+| `azure_key` | Azure Vision key |
+| `dbname` | PostgreSQL database name |
+| `user` | PostgreSQL username |
+| `password` | PostgreSQL password |
+| `host` | PostgreSQL hostname |
+| `port` | PostgreSQL port (usually `5432`) |
+
+Use the App Service application settings for credentials; do not commit `.env` to GitHub. Ensure the PostgreSQL server accepts connections from the web app and that the `transactions_live` table exists before sending receipt uploads.
+
+## Connect the GitHub branch
+
+In the GitHub repository, open **Settings → Secrets and variables → Actions**:
+
+1. Add the repository variable `AZURE_WEBAPP_NAME` with the exact App Service name.
+2. Add the repository secret `AZURE_WEBAPP_PUBLISH_PROFILE` with the publish profile XML downloaded from the App Service's **Get publish profile** option.
+3. Push or merge a commit to `main`. The `Deploy FastAPI to Azure App Service` workflow will deploy it. You can also start it manually from **Actions**.
+
+After deployment, the FastAPI docs are available at `/docs`. Receipt requests need the `x-api-key` header and the configured Azure Vision and PostgreSQL services.

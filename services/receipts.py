@@ -93,7 +93,24 @@ def call_azure_ocr(image):
     )
 
     if response.status_code != 202:
-        raise OCRError(f"OCR request failed with status {response.status_code}")
+        # Azure includes a useful error code/message for authentication and
+        # resource configuration failures. Keep the diagnostic, never headers.
+        try:
+            error = response.json().get("error", {})
+            detail = ": ".join(
+                value for value in (error.get("code"), error.get("message")) if value
+            )
+        except (ValueError, AttributeError):
+            detail = ""
+
+        if response.status_code == 401:
+            hint = "Check that azure_key belongs to the Azure Vision resource at azure_endpoint."
+            detail = f"{detail}. {hint}" if detail else hint
+
+        message = f"OCR request failed with status {response.status_code}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise OCRError(message)
 
     operation_url = response.headers.get("Operation-Location")
     if not operation_url:

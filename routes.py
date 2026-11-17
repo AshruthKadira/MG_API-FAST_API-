@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 import logging
 import secrets
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from starlette.datastructures import UploadFile
 
 from .config import settings
 from .db import get_connection
@@ -47,8 +48,38 @@ def health_check():
     return {"message": "APP IS LIVE"}
 
 
-@router.post("/extract-receipt", dependencies=[Depends(verify_api_key)])
-def extract_receipt(image: bytes = Body(..., media_type="application/octet-stream")):
+@router.post(
+    "/extract-receipt",
+    dependencies=[Depends(verify_api_key)],
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["image"],
+                        "properties": {"image": {"type": "string", "format": "binary"}},
+                    }
+                },
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
+            }
+        }
+    },
+)
+async def extract_receipt(request: Request):
+    content_type = request.headers.get("content-type", "").lower()
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        upload = form.get("image") or form.get("file")
+        if not isinstance(upload, UploadFile):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Multipart upload must include a file field named 'image' (or 'file')",
+            )
+        image = await upload.read()
+    else:
+        image = await request.body()
+
     if not image:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -60,7 +91,6 @@ def extract_receipt(image: bytes = Body(..., media_type="application/octet-strea
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="Image upload is too large",
         )
-
     try:
         azure_json = call_azure_ocr(image)
         # print(azure_json, "JSON")
